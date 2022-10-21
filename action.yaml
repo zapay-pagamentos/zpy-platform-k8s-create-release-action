@@ -1,0 +1,64 @@
+name: 'Create Release'
+description: 'Create Release'
+inputs:
+  github_token:
+    description: 'Github token'
+    required: true
+  pypi-user:
+    description: 'PyPi user'
+    required: true
+  python-password:
+    description: 'PyPi password'
+    required: true
+outputs:
+  imageTag: 
+    description: "Image TAG"
+    value: ${{ steps.increment_version.outputs.image-tag }}
+runs:
+  using: "composite"
+  steps:
+    - name: Check out the repo
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Prepare Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.9'
+
+    - name: Install Poetry
+      env:
+        PYPI_USER: ${{ inputs.pypi-user }}
+        PYPI_PASSWORD: ${{ inputs.python-password }}
+      shell: bash
+      run: |
+        pip install poetry
+        poetry config http-basic.zapay-pypi $PYPI_USER $PYPI_PASSWORD
+    - name: Increment version
+      id: increment_version
+      env:
+        release_name: ${{ github.event.pull_request.title }}
+      shell: bash
+      run: |
+        package_version=$(git tag --list --sort=-version:refname | head -n 1)
+        poetry version $package_version
+        new_version_name=$(echo $release_name | grep -oP "^((M|m){1}ajor)|((M|m){1}inor)|((P|p){1}atch)" | tr '[:upper:]' '[:lower:]')
+        if [ ! -z "$new_version_name" ]; then
+          poetry version $new_version_name
+          new_version=$(poetry version -s)
+          echo "::set-output name=image-tag::$new_version"
+        else
+            echo "Título do pull request deve iniciar com Major, Minor ou Patch" >&2
+            exit 1
+        fi
+    - name: Add tag and make a release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }} # This token is provided by Actions, you do not need to create your own token
+      with:
+        tag_name: ${{ steps.increment_version.outputs.image-tag }}
+        release_name: ${{ steps.increment_version.outputs.image-tag }}
+        draft: false
+        prerelease: false
