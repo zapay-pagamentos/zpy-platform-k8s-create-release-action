@@ -17,8 +17,8 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Check out the repo
-      uses: actions/checkout@v2
+    - name: Checkout code
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
     - name: Prepare Python
@@ -44,18 +44,18 @@ runs:
         release_name: ${{ github.event.pull_request.title }}
       shell: bash
       run: |
-        check_package_version=$(git tag --list --sort=-version:refname | head -n 1)
+        check_package_version=$(git tag --list --sort=-version:refname | sed -n 1p)
         if [ $check_package_version = "staging" ]; then 
           package_version=$(git tag --list --sort=-version:refname | sed -n 2p) 
         else
-          package_version=$(git tag --list --sort=-version:refname | head -n 1)
+          package_version=$(git tag --list --sort=-version:refname | sed -n 1p)
         fi
         poetry version $package_version
         new_version_name=$(echo $release_name | grep -oP "((M|m){1}ajor)|((M|m){1}inor)|((P|p){1}atch)" | tr '[:upper:]' '[:lower:]')
         if [ ! -z "$new_version_name" ]; then
           poetry version $new_version_name
           new_version=$(poetry version -s)
-          echo "::set-output name=image-tag::$new_version"
+          echo "image-tag=$new_version" >> $GITHUB_OUTPUT
         else
             echo "Título do pull request deve finalizar com (Major), (Minor) ou (Patch)" >&2
             exit 1
