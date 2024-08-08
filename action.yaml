@@ -1,72 +1,32 @@
-name: 'Create Release'
-description: 'Create Release'
+name: 'Release creator'
+description: 'Create release base on title of PR'
 inputs:
-  github_token:
-    description: 'Github token'
+  org-github-token:
+    description: 'Org github token'
     required: true
-  pypi-user:
-    description: 'PyPi user'
-    required: true
-  pypi-password:
-    description: 'PyPi password'
-    required: true
-outputs:
-  imageTag: 
-    description: "Image TAG"
-    value: ${{ steps.increment_version.outputs.image-tag }}
+    
 runs:
   using: "composite"
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 0
-    - name: Prepare Python
-      uses: actions/setup-python@v3
+    - name: Title Check
+      id: title-check
+      uses: zapay-pagamentos/zpy-platform-k8s-check-pr-title-action@main
       with:
-        python-version: '3.9'
-    - name: Cache pip
-      uses: actions/cache@v3
-      with:
-        path: /opt/hostedtoolcache/Python/${{ inputs.python-version }}/x64/
-        key: python${{ inputs.python-version }}-${{ runner.os }}-requirements-${{ hashFiles('requirements.txt') }}
-    - name: Install Poetry
-      env:
-        PYPI_USER: ${{ inputs.pypi-user }}
-        PYPI_PASSWORD: ${{ inputs.pypi-password }}
-      shell: bash
-      run: |
-        pip install poetry
-        poetry config http-basic.zapay-pypi $PYPI_USER $PYPI_PASSWORD
-    - name: Increment version
-      id: increment_version
-      env:
-        release_name: ${{ github.event.pull_request.title }}
-      shell: bash
-      run: |
-        check_package_version=$(git tag --list --sort=-version:refname | sed -n 1p)
-        if [ $check_package_version = "staging" ]; then 
-          package_version=$(git tag --list --sort=-version:refname | sed -n 2p) 
-        else
-          package_version=$(git tag --list --sort=-version:refname | sed -n 1p)
-        fi
-        poetry version $package_version
-        new_version_name=$(echo $release_name | grep -oP "((M|m){1}ajor)|((M|m){1}inor)|((P|p){1}atch)" | tr '[:upper:]' '[:lower:]')
-        if [ ! -z "$new_version_name" ]; then
-          poetry version $new_version_name
-          new_version=$(poetry version -s)
-          echo "image-tag=$new_version" >> $GITHUB_OUTPUT
-        else
-            echo "Título do pull request deve finalizar com (Major), (Minor) ou (Patch)" >&2
-            exit 1
-        fi
+        org_github_token: ${{ inputs.org-github-token }}
+    - name: Validate version
+      id: validate-version
+      uses: zapay-pagamentos/zpy-platform-k8s-validate-version-action@v2
     - name: Add tag and make a release
       id: create_release
       uses: actions/create-release@v1
       env:
-        GITHUB_TOKEN: ${{ inputs.github_token }} # This token is provided by Actions, you do not need to create your own token
+        GITHUB_TOKEN: ${{ inputs.org-github-token }} # This token is provided by Actions, you do not need to create your own token
       with:
-        tag_name: ${{ steps.increment_version.outputs.image-tag }}
-        release_name: ${{ steps.increment_version.outputs.image-tag }}
+        tag_name: ${{ steps.validate-version.outputs.versionCandidate }}
+        release_name: ${{ steps.validate-version.outputs.versionCandidate }}
         draft: false
         prerelease: false
+    
